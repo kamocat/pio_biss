@@ -27,9 +27,10 @@ import matplotlib.pyplot as plt
 from pioemu import conditions, emulate, State
 from adafruit_pioasm import Program
 from collections import deque
+from vcdvcd import VCDVCD
 
-period = 10 # cycles per half-clock
-dly = 2 #cycles before sampling
+period = 9 # cycles per half-clock
+dly = 0 #cycles before sampling
 asm = Program(f'''
 .program biss_master
 .side_set 1
@@ -49,9 +50,9 @@ public get_set: ;Clear the first bit
     nop side 1 [{period-1}]
     jmp x-- get_bits side 1
 get_bits:
-    nop side 0 [{period}]
-    nop side 1 [{dly}]
-    in pins, 1 side 1 [{period-dly-2}]
+    nop side 0 [{dly}]
+    in pins, 1 side 0 [{period-dly-1}]
+    nop side 1 [{period-1}]
     jmp x-- get_bits side 1
 public cleanup:
     push side 1 ;FIXME: Only push if there is data
@@ -78,12 +79,25 @@ class Clocked:
     def complete(self, opcode:int, state:State) -> bool:
         return self.i <= 0
 
-init = State(pin_directions=0x02,
-             transmit_fifo=deque([63])
+class Vcd:
+    def __init__(self, fname:str, clkrate:float = 1):
+        self.d = VCDVCD(fname).data
+        self.clkrate = clkrate
+    def get(self, state:State) -> int:
+        clk = int(state.clock * self.clkrate)
+        accum = 0
+        for k in list(self.d.keys()):
+            accum <<= 1
+            accum |= int(self.d[k][clk])
+        return accum
+
+init = State(pin_directions=0x04,
+             transmit_fifo=deque([48]),
+             clock=130,
              #program_counter=asm.public_labels['entry_point']
             )
 
-data = Clocked(0xC2123456789ABCDE, 64)
+data = Vcd('1MHz.vcd', 500)
 
 
 
@@ -96,14 +110,14 @@ trace = [
                     #stop_when=conditions.clock_cycles_reached(1810),
                     stop_when=tx_complete,
                     initial_state = init,
-                    input_source=data.next,
+                    input_source=data.get,
                     auto_push=True,
                     push_threshold=32,
                     auto_pull=True,
                     pull_threshold=32,
                     shift_isr_right=False,
                     shift_osr_right=False,
-                    side_set_base=1,
+                    side_set_base=2,
                     side_set_count=asm.pio_kwargs['sideset_pin_count'],
                     #wrap_target=asm.pio_kwargs['wrap_target'],
                     #wrap_top=asm.pio_kwargs['wrap'],
@@ -126,10 +140,11 @@ def binary_plot(names):
     for i in range(n):
         axes[i].step(t,  [1 if x[1]&(1<<i) else 0 for x in trace])
         axes[i].set_ylabel(names[i])
-    axes[0].set_xlabel('PIO Clock Cycles')
+    axes[-1].set_xlabel('PIO Clock Cycles')
+    axes[0].margins(x=0, y=0.05)
     plt.yticks([0,1])
     plt.xticks([n for n,e in zip(t,execution) if type(e) is type('')]) #Only label the named transitions
 
-binary_plot(['SLO','MA'])
+binary_plot(['SLO','ref','MA'])
 captures = [f'{x[3]:08X}' for x in trace if x[3] is not None]
 print(captures)
