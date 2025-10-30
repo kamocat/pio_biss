@@ -146,5 +146,24 @@ def binary_plot(names):
     plt.xticks([n for n,e in zip(t,execution) if type(e) is type('')]) #Only label the named transitions
 
 binary_plot(['SLO','ref','MA'])
-captures = [f'{x[3]:08X}' for x in trace if x[3] is not None]
-print(captures)
+captures = [x[3] for x in trace if x[3] is not None]
+
+# %%
+
+def crc(quotient, bits):
+    poly = 0b1000011
+    expected = quotient & 0x3F
+    quotient -= expected
+    for x in range(bits-7, -1, -1):
+        #print(f'q{quotient:014b}')
+        if quotient & (0x40 << x):
+            quotient ^= poly << x
+        #print(f'p{poly<<x:014b}')
+    res = quotient & 0x3F
+    res ^= 0x3F
+    return (res, expected)
+
+val = captures[0]<<12 | captures[1] #44-bit word
+
+crc(val, 44)
+#crc(0b11010110111110, 14)
