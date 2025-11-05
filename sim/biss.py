@@ -80,13 +80,16 @@ class Clocked:
         return self.i <= 0
 
 class Vcd:
-    def __init__(self, fname:str, clkrate:float = 1):
-        self.d = VCDVCD(fname).data
+    def __init__(self, fname:str, keys, clkrate:float = 1):
+        v = VCDVCD(fname)
+        self.keys = [v.references_to_ids['libsigrok.'+k] for k in keys]
+        self.keys.reverse()
+        self.d = v.data
         self.clkrate = clkrate
     def get(self, state:State) -> int:
         clk = int(state.clock * self.clkrate)
         accum = 0
-        for k in list(self.d.keys()):
+        for k in self.keys:
             accum <<= 1
             accum |= int(self.d[k][clk])
         return accum
@@ -97,7 +100,7 @@ init = State(pin_directions=0x04,
              #program_counter=asm.public_labels['entry_point']
             )
 
-data = Vcd('1MHz.vcd', 500)
+data = Vcd('../captures/mb5u_1mhz.vcd', keys=['SLO','MA'], clkrate=500)
 
 
 
